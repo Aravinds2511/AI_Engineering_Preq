@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from pydantic import field_validator
+from pydantic import field_validator, EmailStr
 from sqlmodel import Field, SQLModel
 
 
@@ -51,3 +51,26 @@ class DocumentCreate(DocumentBase):
 class DocumentRead(DocumentBase):
     id: int
     created_at: datetime
+
+class UserBase(SQLModel):
+    username: str = Field(min_length=3, max_length=50, unique=True, index=True)
+
+class User(UserBase, table=True):
+    __tablename__ = "users"
+
+    id: int | None = Field(default=None, primary_key=True)
+    hashed_password: str
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+    )
+
+class UserCreate(UserBase):
+    password: str = Field(min_length=8, max_length=128)
+
+class UserRead(UserBase):
+    id: int
+    created_at: datetime
+
+class Token(SQLModel):
+    access_token: str
+    token_type: str = "bearer"
