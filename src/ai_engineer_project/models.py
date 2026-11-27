@@ -1,5 +1,6 @@
-from datetime import datetime, timezone
-from pydantic import field_validator, EmailStr
+from datetime import UTC, datetime
+
+from pydantic import field_validator
 from sqlmodel import Field, SQLModel
 
 
@@ -40,7 +41,7 @@ class Document(DocumentBase, table=True):
 
     id: int | None = Field(default=None, primary_key=True)
     created_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(UTC),
     )
 
 
@@ -61,7 +62,7 @@ class User(UserBase, table=True):
     id: int | None = Field(default=None, primary_key=True)
     hashed_password: str
     created_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(UTC),
     )
 
 class UserCreate(UserBase):

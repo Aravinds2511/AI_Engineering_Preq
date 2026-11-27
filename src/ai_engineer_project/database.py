@@ -25,7 +25,7 @@ def create_db_and_tables() -> None:
     SQLModel.metadata.create_all(engine)
 
 
-def get_session() -> Generator[Session, None, None]:
+def get_session() -> Generator[Session]:
     """Yield a database session per request."""
     with Session(engine) as session:
         yield session

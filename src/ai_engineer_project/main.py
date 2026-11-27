@@ -1,15 +1,33 @@
+from typing import Annotated
+
 import jwt
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlmodel import Session, select, text
+from sqlmodel import Session, select
 
 from ai_engineer_project.database import get_session
-from ai_engineer_project.models import Document, DocumentCreate, DocumentRead, User, UserCreate, UserRead, Token
-from ai_engineer_project.security import hash_password, verify_password, create_access_token, decode_access_token
+from ai_engineer_project.models import (
+    Document,
+    DocumentCreate,
+    DocumentRead,
+    Token,
+    User,
+    UserCreate,
+    UserRead,
+)
+from ai_engineer_project.security import (
+    create_access_token,
+    decode_access_token,
+    hash_password,
+    verify_password,
+)
 
 app = FastAPI(title="AI Engineer Project")
 
 security_scheme = HTTPBearer()
+SessionDep = Annotated[Session, Depends(get_session)]
+CredentialsDep = Annotated[HTTPAuthorizationCredentials, Depends(security_scheme)]
+
 
 def _get_document_or_404(document_id: int, session: Session) -> Document:
     """Fetch a document by ID or raise a 404 HTTPException."""
@@ -23,16 +41,16 @@ def _get_document_or_404(document_id: int, session: Session) -> Document:
 
 
 @app.get("/health")
-def health_check(session: Session = Depends(get_session)):
+def health_check(session: SessionDep):
     # Executes a lightweight query to verify PostgreSQL connectivity
-    session.exec(text("SELECT 1"))
+    session.exec(select(1))
     return {"status": "healthy"}
 
 
 @app.post("/documents", response_model=DocumentRead)
 def create_document(
     doc: DocumentCreate,
-    session: Session = Depends(get_session),
+    session: SessionDep,
 ):
     db_doc = Document.model_validate(doc)
     session.add(db_doc)
@@ -42,14 +60,14 @@ def create_document(
 
 
 @app.get("/documents", response_model=list[DocumentRead])
-def list_documents(session: Session = Depends(get_session)):
+def list_documents(session: SessionDep):
     return session.exec(select(Document)).all()
 
 
 @app.get("/documents/{document_id}", response_model=DocumentRead)
 def get_document(
     document_id: int,
-    session: Session = Depends(get_session),
+    session: SessionDep,
 ):
     return _get_document_or_404(document_id, session)
 
@@ -58,7 +76,7 @@ def get_document(
 def update_document(
     document_id: int,
     doc: DocumentCreate,
-    session: Session = Depends(get_session),
+    session: SessionDep,
 ):
     db_doc = _get_document_or_404(document_id, session)
     db_doc.sqlmodel_update(doc.model_dump())
@@ -71,17 +89,18 @@ def update_document(
 @app.delete("/documents/{document_id}")
 def delete_document(
     document_id: int,
-    session: Session = Depends(get_session),
+    session: SessionDep,
 ):
     db_doc = _get_document_or_404(document_id, session)
     session.delete(db_doc)
     session.commit()
     return {"status": "deleted", "id": document_id}
 
+
 @app.post("/auth/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
 def register_user(
     user_in: UserCreate,
-    session: Session = Depends(get_session),
+    session: SessionDep,
 ):
     existing = session.exec(
         select(User).where(User.username == user_in.username)
@@ -100,10 +119,11 @@ def register_user(
     session.refresh(db_user)
     return db_user
 
+
 @app.post("/auth/login", response_model=Token)
 def login_user(
     credentials: UserCreate,
-    session: Session = Depends(get_session),
+    session: SessionDep,
 ):
     db_user = session.exec(
         select(User).where(User.username == credentials.username)
@@ -115,13 +135,14 @@ def login_user(
             detail="Invalid username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     access_token = create_access_token(data={"sub": str(db_user.id)})
     return Token(access_token=access_token)
 
+
 def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security_scheme),
-    session: Session = Depends(get_session),
+    credentials: CredentialsDep,
+    session: SessionDep,
 ) -> User:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -135,14 +156,18 @@ def get_current_user(
         if user_id is None:
             raise credentials_exception
         user_id_int = int(user_id)
-    except (jwt.InvalidTokenError, ValueError):
-        raise credentials_exception
+    except (jwt.InvalidTokenError, ValueError) as exc:
+        raise credentials_exception from exc
 
     db_user = session.get(User, user_id_int)
     if db_user is None:
         raise credentials_exception
     return db_user
 
+
+CurrentUserDep = Annotated[User, Depends(get_current_user)]
+
+
 @app.get("/users/me", response_model=UserRead)
-def read_current_user(current_user: User = Depends(get_current_user)):
+def read_current_user(current_user: CurrentUserDep):
     return current_user

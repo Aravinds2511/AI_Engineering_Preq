@@ -1,5 +1,6 @@
 import pytest
 from fastapi.testclient import TestClient
+
 from ai_engineer_project.main import app
 
 # Create the test client bound to your FastAPI app
